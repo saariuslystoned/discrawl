@@ -80,10 +80,18 @@ func Parts(m *discordgo.Message, attachments []Attachment) []Part {
 		parts = append(parts, Part{Kind: kind, Path: "/referenced_message/content", Text: m.ReferencedMessage.Content, MessageID: m.ReferencedMessage.ID})
 	}
 	// Discord sends forwarded text in message_snapshots, not referenced_message.
+	// A snapshot holds the forwarded message's content, embeds, attachments and
+	// components; all of it is labelled forward context, never authored text.
 	if m.MessageReference != nil && m.MessageReference.Type == discordgo.MessageReferenceTypeForward {
 		for i, snapshot := range m.MessageSnapshots {
-			if snapshot.Message != nil && snapshot.Message.Content != "" {
-				parts = append(parts, Part{Kind: "forward_context", Path: fmt.Sprintf("/message_snapshots/%d/message/content", i), Text: snapshot.Message.Content, MessageID: m.MessageReference.MessageID})
+			if snapshot.Message == nil {
+				continue
+			}
+			forwarded := *snapshot.Message
+			forwarded.MessageReference, forwarded.ReferencedMessage, forwarded.MessageSnapshots = nil, nil, nil
+			base := fmt.Sprintf("/message_snapshots/%d/message", i)
+			for _, part := range Parts(&forwarded, nil) {
+				parts = append(parts, Part{Kind: "forward_context", Path: base + part.Path, Text: part.Text, MessageID: m.MessageReference.MessageID})
 			}
 		}
 	}

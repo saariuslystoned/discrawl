@@ -61,3 +61,27 @@ func TestForwardSnapshotTextIsSearchableContext(t *testing.T) {
 	require.Equal(t, []Part{{Kind: "forward_context", Path: "/message_snapshots/0/message/content", Text: "forwarded words", MessageID: "m1"}}, p)
 	require.Equal(t, "forward:forwarded words", Normalize(p))
 }
+
+func TestForwardSnapshotEmbedsAttachmentsAndComponentsAreSearchableContext(t *testing.T) {
+	t.Parallel()
+	// A snapshot carries the forwarded message's embeds, attachments and
+	// components as well as its content (Discord's message snapshot object).
+	var m discordgo.Message
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"id": "m2", "channel_id": "c2", "type": 0, "content": "",
+		"message_reference": {"type": 1, "message_id": "m1", "channel_id": "c1", "guild_id": "g1"},
+		"message_snapshots": [{"message": {"type": 0, "content": "", "flags": 32768,
+			"embeds": [{"title": "Release 2.4", "description": "changelog inside"}],
+			"attachments": [{"id": "a1", "filename": "release-notes.pdf"}],
+			"components": [{"type": 17, "components": [{"type": 10, "content": "card body text"}]}],
+			"timestamp": "2026-08-19T12:00:00.000000+00:00", "mentions": []}}]
+	}`), &m))
+	normalized := Normalize(Parts(&m, nil))
+	for _, want := range []string{"forward:Release 2.4", "forward:changelog inside", "forward:release-notes.pdf", "forward:card body text"} {
+		require.Contains(t, normalized, want)
+	}
+	for _, part := range Parts(&m, nil) {
+		require.Equal(t, "forward_context", part.Kind)
+		require.Equal(t, "m1", part.MessageID)
+	}
+}
